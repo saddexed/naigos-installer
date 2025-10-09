@@ -1,7 +1,16 @@
 #!/bin/bash
 
 ##############################################################################
-# Nagios Core 4.4.14 Non-Interactive Installation Script
+# Nagios Core 4.4.14 cd /opt
+
+sudo wget -q -O nagioscore.tar.gz "https://github.com/NagiosEnterprises/nagioscore/archive/nagios-${NAGIOS_VERSION}.tar.gz"
+sudo tar xzf nagioscore.tar.gz
+
+cd "nagioscore-nagios-${NAGIOS_VERSION}/"
+sudo ./configure --with-httpd-conf=/etc/apache2/sites-available > /dev/null 2>&1
+sudo make all > /dev/null 2>&1
+
+print_message "Nagios Core compiled successfully"ctive Installation Script
 # This script automates the complete installation of Nagios Core on Ubuntu
 ##############################################################################
 
@@ -49,10 +58,19 @@ print_message "Step 2: Updating system and installing prerequisite tools..."
 # Set environment variable to avoid interactive prompts
 export DEBIAN_FRONTEND=noninteractive
 
+# Configure needrestart to avoid interactive prompts for service restarts
+sudo mkdir -p /etc/needrestart/conf.d
+echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/conf.d/50local.conf > /dev/null
+
+# Configure apt to avoid interactive prompts for daemon restarts
+echo 'DPkg::Post-Invoke { "if [ -d /etc/needrestart/conf.d ]; then echo \$nrconf{restart} = '\"'\"'a'\"'\"'; > /etc/needrestart/conf.d/50local.conf; fi"; };' | sudo tee /etc/apt/apt.conf.d/99needrestart > /dev/null
+
 sudo apt-get update
 
 # Install prerequisites with automatic yes and non-interactive mode
-sudo apt-get install -y \
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    -o Dpkg::Options::="--force-confdef" \
+    -o Dpkg::Options::="--force-confold" \
     autoconf \
     gcc \
     libc6 \
@@ -108,7 +126,7 @@ sudo wget -O nagioscore.tar.gz "https://github.com/NagiosEnterprises/nagioscore/
 sudo tar xzf nagioscore.tar.gz
 
 cd "nagioscore-nagios-${NAGIOS_VERSION}/"
-sudo ./configure --with-httpd-conf=/etc/apache2/sites-enabled
+sudo ./configure --with-httpd-conf=/etc/apache2/sites-available
 sudo make all
 
 print_message "Nagios Core compiled successfully"
@@ -118,8 +136,8 @@ print_message "Nagios Core compiled successfully"
 ##############################################################################
 print_message "Step 6: Creating Nagios user and group..."
 
-sudo make install-groups-users
-sudo usermod -a -G nagios www-data
+sudo make install-groups-users > /dev/null 2>&1
+sudo usermod -a -G nagios www-data > /dev/null 2>&1
 
 print_message "User and group created successfully"
 
@@ -128,11 +146,11 @@ print_message "User and group created successfully"
 ##############################################################################
 print_message "Step 7: Installing Nagios binaries and configuration files..."
 
-sudo make install
-sudo make install-daemoninit
-sudo make install-commandmode
-sudo make install-config
-sudo make install-webconf
+sudo make install > /dev/null 2>&1
+sudo make install-daemoninit > /dev/null 2>&1
+sudo make install-commandmode > /dev/null 2>&1
+sudo make install-config > /dev/null 2>&1
+sudo make install-webconf > /dev/null 2>&1
 
 print_message "Nagios binaries and configuration installed successfully"
 
@@ -179,6 +197,7 @@ print_message "Step 11: Configuring Apache modules..."
 
 sudo a2enmod rewrite
 sudo a2enmod cgi
+sudo systemctl reload apache2
 
 print_message "Apache modules enabled successfully"
 
@@ -220,14 +239,27 @@ sudo systemctl daemon-reload
 print_message "Nagios systemd service configured successfully"
 
 ##############################################################################
-# Step 14: Create nagiosadmin User password
+# Step 14: Create nagiosadmin User password and enable Nagios site
 ##############################################################################
-print_message "Step 14: Creating Nagios admin user..."
+print_message "Step 14: Creating Nagios admin user and enabling Nagios site..."
 echo "${NAGIOS_ADMIN_PASSWORD}" | sudo htpasswd -c -i /usr/local/nagios/etc/htpasswd.users ${NAGIOS_ADMIN_USER}
-sudo ln -sf /etc/apache2/sites-available/nagios.conf /etc/apache2/sites-enabled/
+
+# Enable the Nagios Apache site configuration
+if [ -f /etc/apache2/sites-available/nagios.conf ]; then
+    sudo a2ensite nagios
+    print_message "Nagios site enabled successfully"
+else
+    print_error "Nagios Apache configuration not found in /etc/apache2/sites-available/!"
+    print_error "This may prevent the web interface from working."
+fi
+
 sudo ln -sf /etc/init.d/nagios /etc/rcS.d/S99nagios
 
-print_message "Nagios admin user created successfully"
+# Test Apache configuration
+print_message "Testing Apache configuration..."
+sudo apache2ctl configtest
+
+print_message "Nagios admin user created and site enabled successfully"
 
 ##############################################################################
 # Step 15: Restart Apache and start Nagios services
@@ -245,7 +277,9 @@ print_message "Nagios services started successfully"
 ##############################################################################
 print_message "Step 16: Installing Nagios Plugins prerequisites..."
 
-sudo apt-get install -y \
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    -o Dpkg::Options::="--force-confdef" \
+    -o Dpkg::Options::="--force-confold" \
     autoconf \
     gcc \
     libc6 \
@@ -269,14 +303,14 @@ print_message "Nagios Plugins prerequisites installed successfully"
 print_message "Step 17: Downloading and installing Nagios Plugins..."
 
 cd /opt
-sudo wget --no-check-certificate -O nagios-plugins.tar.gz "https://github.com/nagios-plugins/nagios-plugins/archive/release-${NAGIOS_PLUGINS_VERSION}.tar.gz"
+sudo wget -q --no-check-certificate -O nagios-plugins.tar.gz "https://github.com/nagios-plugins/nagios-plugins/archive/release-${NAGIOS_PLUGINS_VERSION}.tar.gz"
 sudo tar xzf nagios-plugins.tar.gz
 
 cd "nagios-plugins-release-${NAGIOS_PLUGINS_VERSION}/"
-sudo ./tools/setup
-sudo ./configure
-sudo make
-sudo make install
+sudo ./tools/setup > /dev/null 2>&1
+sudo ./configure > /dev/null 2>&1
+sudo make > /dev/null 2>&1
+sudo make install > /dev/null 2>&1
 
 print_message "Nagios Plugins installed successfully"
 
@@ -284,18 +318,42 @@ print_message "Nagios Plugins installed successfully"
 # Final verification
 ##############################################################################
 print_message "Verifying Nagios installation..."
+
+# Check Nagios service
 if sudo systemctl is-active --quiet nagios.service; then
-    print_message "Nagios service is running"
+    print_message "✓ Nagios service is running"
 else
-    print_error "Nagios service is not running"
+    print_error "✗ Nagios service is not running"
     sudo systemctl status nagios.service
 fi
+
+# Check Apache service
 if sudo systemctl is-active --quiet apache2.service; then
-    print_message "Apache service is running"
+    print_message "✓ Apache service is running"
 else
-    print_error "Apache service is not running"
+    print_error "✗ Apache service is not running"
     sudo systemctl status apache2.service
 fi
+
+# Check Apache configuration
+print_message "Checking Apache Nagios configuration..."
+if [ -f /etc/apache2/conf-enabled/nagios.conf ] || [ -f /etc/apache2/sites-enabled/nagios.conf ]; then
+    print_message "✓ Nagios Apache configuration is enabled"
+else
+    print_warning "⚠ Nagios Apache configuration not found in expected locations"
+fi
+
+# Check if CGI module is loaded
+if sudo apache2ctl -M | grep -q cgi; then
+    print_message "✓ Apache CGI module is loaded"
+else
+    print_warning "⚠ Apache CGI module might not be loaded"
+fi
+
+# List enabled Apache configurations
+print_message "Enabled Apache configurations:"
+ls -la /etc/apache2/conf-enabled/ | grep nagios || print_warning "No nagios config in conf-enabled"
+ls -la /etc/apache2/sites-enabled/ | grep nagios || print_warning "No nagios config in sites-enabled"
 
 ##############################################################################
 # Installation Complete
