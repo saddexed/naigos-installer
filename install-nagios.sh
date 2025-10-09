@@ -277,17 +277,21 @@ else
 fi
 
 echo ""
+echo "Fetching server IP address..."
+SERVER_IP=$(curl -s https://ipapi.co/ip || echo "host-ip")
+
+echo ""
 echo "=========================================="
 echo "Nagios Installation Complete!"
 echo "=========================================="
 echo ""
-echo "Access Nagios at: http://YOUR_SERVER_IP/nagios"
-echo "Username: nagiosadmin"
-echo "Password: nagiosadmin (CHANGE THIS IMMEDIATELY!)"
-echo ""
-echo "To change the password, run:"
-echo "  sudo htpasswd /usr/local/nagios/etc/htpasswd.users nagiosadmin"
-echo ""
-echo "Swap file created at: /root/myswapfile (1GB)"
-echo ""
+echo "Access nagios at: http://$SERVER_IP/nagios"
+echo "  Username: nagiosadmin"
+echo "  Password: nagiosadmin"
+echo "Change your password using: sudo htpasswd /usr/local/nagios/etc/htpasswd.users nagiosadmin"
+echo "Additional Information:"
+echo "  - Swap file: /root/myswapfile (1GB)"
+if [ "$SERVER_IP" != "host-ip" ]; then
+    echo "  - Server IP: $SERVER_IP"
+fi
 echo "=========================================="
