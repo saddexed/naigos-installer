@@ -31,7 +31,21 @@ sudo apt-get update -y
 echo ""
 echo "Step 2: Creating Swap File (1GB)"
 echo "=========================================="
-if [ ! -f /root/myswapfile ]; then
+
+# Check if swap is already active
+SWAP_ACTIVE=$(sudo swapon --show | grep -c "/root/myswapfile" || echo "0")
+
+if [ "$SWAP_ACTIVE" -gt 0 ]; then
+    echo "Swap file is already active. Skipping swap creation."
+    sudo swapon --show
+elif [ -f /root/myswapfile ]; then
+    echo "Swap file exists but not active. Enabling it..."
+    sudo swapon /root/myswapfile
+    if ! grep -q "/root/myswapfile" /etc/fstab; then
+        echo "/root/myswapfile none swap sw 0 0" | sudo tee -a /etc/fstab
+    fi
+    echo "Swap file enabled successfully."
+else
     echo "Creating 1GB swap file..."
     sudo dd if=/dev/zero of=/root/myswapfile bs=1M count=1024
     sudo chmod 600 /root/myswapfile
@@ -43,9 +57,11 @@ if [ ! -f /root/myswapfile ]; then
         echo "/root/myswapfile none swap sw 0 0" | sudo tee -a /etc/fstab
     fi
     echo "Swap file created and enabled successfully."
-else
-    echo "Swap file already exists."
 fi
+
+# Display current swap status
+echo "Current swap status:"
+free -h | grep -E "Swap|total"
 
 echo ""
 echo "Step 3: Installing Prerequisites"
@@ -124,16 +140,16 @@ echo ""
 echo "Step 12: Verifying Apache Configuration"
 echo "=========================================="
 # Check if make install-webconf created the config
-if [ -f /etc/apache2/sites-available/nagios.conf ]; then
-    echo "✓ Apache config created successfully by make install-webconf"
+# Note: make install-webconf installs directly to sites-enabled
+if [ -f /etc/apache2/sites-enabled/nagios.conf ]; then
+    echo "✓ Apache config installed to sites-enabled by make install-webconf"
+elif [ -f /etc/apache2/sites-available/nagios.conf ]; then
+    echo "✓ Apache config found in sites-available, enabling it..."
+    sudo a2ensite nagios.conf
 else
     echo "✗ Apache config not found - this shouldn't happen!"
     exit 1
 fi
-
-# Enable the Nagios site
-echo "Enabling Nagios site..."
-sudo a2ensite nagios.conf
 
 echo ""
 echo "Step 13: Configuring Firewall (UFW)"
