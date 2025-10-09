@@ -115,52 +115,28 @@ define command{
 EOF
 
 echo ""
-echo "Step 11: Configuring Apache for Nagios"
+echo "Step 11: Enabling Apache Modules"
 echo "=========================================="
-# Verify Apache configuration was created by make install-webconf
-if [ ! -f /etc/apache2/sites-available/nagios.conf ]; then
-    echo "WARNING: Nagios Apache config not found, creating it manually..."
-    cat << 'APACHECONF' | sudo tee /etc/apache2/sites-available/nagios.conf > /dev/null
-ScriptAlias /nagios/cgi-bin "/usr/local/nagios/sbin"
-
-<Directory "/usr/local/nagios/sbin">
-   Options ExecCGI
-   AllowOverride None
-   Require all granted
-   AuthName "Nagios Access"
-   AuthType Basic
-   AuthUserFile /usr/local/nagios/etc/htpasswd.users
-   Require valid-user
-</Directory>
-
-Alias /nagios "/usr/local/nagios/share"
-
-<Directory "/usr/local/nagios/share">
-   Options None
-   AllowOverride None
-   Require all granted
-   AuthName "Nagios Access"
-   AuthType Basic
-   AuthUserFile /usr/local/nagios/etc/htpasswd.users
-   Require valid-user
-</Directory>
-APACHECONF
-    echo "Apache config created successfully."
-else
-    echo "Apache config already exists."
-fi
-
-# Enable the Nagios site now that config exists
-echo "Enabling Nagios site..."
-sudo ln -sf /etc/apache2/sites-available/nagios.conf /etc/apache2/sites-enabled/
-
-# Enable required Apache modules
-echo "Enabling Apache modules..."
 sudo a2enmod rewrite
 sudo a2enmod cgi
 
 echo ""
-echo "Step 12: Configuring Firewall (UFW)"
+echo "Step 12: Verifying Apache Configuration"
+echo "=========================================="
+# Check if make install-webconf created the config
+if [ -f /etc/apache2/sites-available/nagios.conf ]; then
+    echo "✓ Apache config created successfully by make install-webconf"
+else
+    echo "✗ Apache config not found - this shouldn't happen!"
+    exit 1
+fi
+
+# Enable the Nagios site
+echo "Enabling Nagios site..."
+sudo a2ensite nagios.conf
+
+echo ""
+echo "Step 13: Configuring Firewall (UFW)"
 echo "=========================================="
 sudo ufw --force enable
 sudo ufw allow Apache
@@ -168,7 +144,7 @@ sudo ufw allow OpenSSH
 sudo ufw reload
 
 echo ""
-echo "Step 13: Creating Nagios Service"
+echo "Step 14: Creating Nagios Service"
 echo "=========================================="
 cat << 'EOF' | sudo tee /etc/systemd/system/nagios.service > /dev/null
 [Unit]
@@ -189,25 +165,49 @@ sudo systemctl daemon-reload
 sudo systemctl enable nagios.service
 
 echo ""
-echo "Step 14: Creating Nagios Admin User"
+echo "Step 15: Creating Nagios Admin User"
 echo "=========================================="
 # Create nagiosadmin user with default password (change this!)
 echo "Creating nagiosadmin user with password: nagiosadmin"
 echo "IMPORTANT: Change this password after installation!"
 sudo htpasswd -bc /usr/local/nagios/etc/htpasswd.users nagiosadmin nagiosadmin
 
+# Set correct permissions on htpasswd file
+sudo chown nagios:nagios /usr/local/nagios/etc/htpasswd.users
+sudo chmod 640 /usr/local/nagios/etc/htpasswd.users
+
+# Verify the password file was created
+if [ -f /usr/local/nagios/etc/htpasswd.users ]; then
+    echo "Password file created successfully."
+    ls -l /usr/local/nagios/etc/htpasswd.users
+else
+    echo "ERROR: Password file was not created!"
+    exit 1
+fi
+
 echo ""
-echo "Step 15: Creating Nagios Init Symlink"
+echo "Step 16: Setting Up Nagios Command File Permissions"
+echo "=========================================="
+# Create the command file directory with proper permissions
+sudo mkdir -p /usr/local/nagios/var/rw
+sudo chown nagios:www-data /usr/local/nagios/var/rw
+sudo chmod 2710 /usr/local/nagios/var/rw
+
+# Ensure Apache user is in nagios group
+sudo usermod -a -G nagios www-data
+
+echo ""
+echo "Step 17: Creating Nagios Init Symlink"
 echo "=========================================="
 sudo ln -sf /etc/init.d/nagios /etc/rcS.d/S99nagios
 
 echo ""
-echo "Step 16: Installing Nagios Plugins Prerequisites"
+echo "Step 18: Installing Nagios Plugins Prerequisites"
 echo "=========================================="
 sudo apt-get install -y autoconf gcc libc6 libmcrypt-dev make libssl-dev wget bc gawk dc build-essential snmp libnet-snmp-perl gettext
 
 echo ""
-echo "Step 17: Downloading and Installing Nagios Plugins"
+echo "Step 19: Downloading and Installing Nagios Plugins"
 echo "=========================================="
 cd /opt
 sudo wget --no-check-certificate -O nagios-plugins.tar.gz https://github.com/nagios-plugins/nagios-plugins/archive/release-2.4.6.tar.gz
@@ -222,22 +222,59 @@ sudo make
 sudo make install
 
 echo ""
-echo "Step 18: Verifying and Starting Services"
+echo "Step 20: Final Permissions and Configuration Check"
+echo "=========================================="
+echo "Setting final permissions..."
+sudo chown -R nagios:nagios /usr/local/nagios
+sudo chmod -R 755 /usr/local/nagios/sbin
+sudo chmod -R 755 /usr/local/nagios/share
+sudo chmod -R 755 /usr/local/nagios/libexec
+
+# Ensure command file permissions are correct
+sudo mkdir -p /usr/local/nagios/var/rw
+sudo chown -R nagios:www-data /usr/local/nagios/var/rw
+sudo chmod 2710 /usr/local/nagios/var/rw
+
+echo ""
+echo "Step 21: Verifying and Starting Services"
 echo "=========================================="
 echo "Testing Apache configuration..."
 sudo apache2ctl configtest
 
-echo "Restarting Apache..."
+echo ""
+echo "Restarting Apache to apply all changes..."
 sudo systemctl restart apache2.service
 
+echo ""
 echo "Starting Nagios..."
 sudo systemctl start nagios.service
 
+# Give services a moment to start
+sleep 2
+
 echo ""
 echo "Service Status:"
+echo "==============="
 sudo systemctl status apache2.service --no-pager -l
 echo ""
 sudo systemctl status nagios.service --no-pager -l
+
+echo ""
+echo "Verifying authentication configuration..."
+if [ -f /usr/local/nagios/etc/htpasswd.users ]; then
+    echo "✓ Password file exists"
+    ls -l /usr/local/nagios/etc/htpasswd.users
+else
+    echo "✗ WARNING: Password file missing!"
+fi
+
+echo ""
+echo "Verifying Apache config..."
+if [ -f /etc/apache2/sites-enabled/nagios.conf ]; then
+    echo "✓ Nagios site is enabled"
+else
+    echo "✗ WARNING: Nagios site not enabled!"
+fi
 
 echo ""
 echo "=========================================="
