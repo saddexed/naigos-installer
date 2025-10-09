@@ -2,7 +2,7 @@
 
 ###########################################
 # Nagios Core Installation Script
-# Non-Interactive Installation for Ubuntu
+# Created by: saddexed
 # Based on: https://medium.com/@princeashok069/nagios-practical-028bd64c5c88
 ###########################################
 
@@ -12,7 +12,6 @@ echo "=========================================="
 echo "Starting Nagios Core Installation"
 echo "=========================================="
 
-# Configure needrestart to run non-interactively
 echo "Configuring needrestart for non-interactive mode..."
 if [ -f /etc/needrestart/needrestart.conf ]; then
     sudo sed -i "s/^#\$nrconf{restart} = 'i';/\$nrconf{restart} = 'a';/" /etc/needrestart/needrestart.conf
@@ -20,7 +19,6 @@ else
     echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/needrestart.conf > /dev/null
 fi
 
-# Set Debian frontend to noninteractive
 export DEBIAN_FRONTEND=noninteractive
 
 echo ""
@@ -32,7 +30,6 @@ echo ""
 echo "Step 2: Creating Swap File (1GB)"
 echo "=========================================="
 
-# Check if swap is already active
 SWAP_ACTIVE=$(sudo swapon --show | grep -c "/root/myswapfile" || echo "0")
 
 if [ "$SWAP_ACTIVE" -gt 0 ]; then
@@ -59,7 +56,6 @@ else
     echo "Swap file created and enabled successfully."
 fi
 
-# Display current swap status
 echo "Current swap status:"
 free -h | grep -E "Swap|total"
 
@@ -72,7 +68,6 @@ sudo apt-get install -y openssl libssl-dev
 echo ""
 echo "Step 4: Configuring Apache"
 echo "=========================================="
-# Move index.php to first position in DirectoryIndex
 sudo sed -i 's/DirectoryIndex.*/DirectoryIndex index.php index.html index.cgi index.pl index.xhtml index.htm/' /etc/apache2/mods-enabled/dir.conf
 sudo systemctl restart apache2
 
@@ -111,7 +106,6 @@ sudo make install-webconf
 echo ""
 echo "Step 9: Configuring Nagios"
 echo "=========================================="
-# Create servers directory for host configurations
 sudo mkdir -p /usr/local/nagios/etc/servers
 
 # Uncomment cfg_dir in nagios.cfg
@@ -120,7 +114,6 @@ sudo sed -i 's/^#cfg_dir=\/usr\/local\/nagios\/etc\/servers/cfg_dir=\/usr\/local
 echo ""
 echo "Step 10: Configuring check_nrpe Command"
 echo "=========================================="
-# Add check_nrpe command definition
 cat << 'EOF' | sudo tee -a /usr/local/nagios/etc/objects/commands.cfg > /dev/null
 
 # Check NRPE Command
@@ -139,8 +132,6 @@ sudo a2enmod cgi
 echo ""
 echo "Step 12: Verifying Apache Configuration"
 echo "=========================================="
-# Check if make install-webconf created the config
-# Note: make install-webconf installs directly to sites-enabled
 if [ -f /etc/apache2/sites-enabled/nagios.conf ]; then
     echo "✓ Apache config installed to sites-enabled by make install-webconf"
 elif [ -f /etc/apache2/sites-available/nagios.conf ]; then
@@ -183,16 +174,12 @@ sudo systemctl enable nagios.service
 echo ""
 echo "Step 15: Creating Nagios Admin User"
 echo "=========================================="
-# Create nagiosadmin user with default password (change this!)
 echo "Creating nagiosadmin user with password: nagiosadmin"
-echo "IMPORTANT: Change this password after installation!"
 sudo htpasswd -bc /usr/local/nagios/etc/htpasswd.users nagiosadmin nagiosadmin
 
-# Set correct permissions on htpasswd file
 sudo chown nagios:nagios /usr/local/nagios/etc/htpasswd.users
 sudo chmod 640 /usr/local/nagios/etc/htpasswd.users
 
-# Verify the password file was created
 if [ -f /usr/local/nagios/etc/htpasswd.users ]; then
     echo "Password file created successfully."
     ls -l /usr/local/nagios/etc/htpasswd.users
@@ -204,12 +191,10 @@ fi
 echo ""
 echo "Step 16: Setting Up Nagios Command File Permissions"
 echo "=========================================="
-# Create the command file directory with proper permissions
 sudo mkdir -p /usr/local/nagios/var/rw
 sudo chown nagios:www-data /usr/local/nagios/var/rw
 sudo chmod 2710 /usr/local/nagios/var/rw
 
-# Ensure Apache user is in nagios group
 sudo usermod -a -G nagios www-data
 
 echo ""
@@ -246,7 +231,6 @@ sudo chmod -R 755 /usr/local/nagios/sbin
 sudo chmod -R 755 /usr/local/nagios/share
 sudo chmod -R 755 /usr/local/nagios/libexec
 
-# Ensure command file permissions are correct
 sudo mkdir -p /usr/local/nagios/var/rw
 sudo chown -R nagios:www-data /usr/local/nagios/var/rw
 sudo chmod 2710 /usr/local/nagios/var/rw
@@ -265,7 +249,6 @@ echo ""
 echo "Starting Nagios..."
 sudo systemctl start nagios.service
 
-# Give services a moment to start
 sleep 2
 
 echo ""
@@ -294,20 +277,16 @@ fi
 
 echo ""
 echo "Fetching server IP address..."
-SERVER_IP=$(curl -s https://ipapi.co/ip || echo "host-ip")
 
 echo ""
 echo "=========================================="
 echo "Nagios Installation Complete!"
 echo "=========================================="
 echo ""
-echo "Access nagios at: http://$SERVER_IP/nagios"
+echo "Access nagios at: http://your-host-ip/nagios"
 echo "  Username: nagiosadmin"
 echo "  Password: nagiosadmin"
 echo "Change your password using: sudo htpasswd /usr/local/nagios/etc/htpasswd.users nagiosadmin"
 echo "Additional Information:"
 echo "  - Swap file: /root/myswapfile (1GB)"
-if [ "$SERVER_IP" != "host-ip" ]; then
-    echo "  - Server IP: $SERVER_IP"
-fi
 echo "=========================================="
