@@ -71,6 +71,9 @@ cd nagioscore-nagios-4.4.14/
 echo ""
 echo "Step 6: Compiling Nagios Core"
 echo "=========================================="
+# Suppress compiler warnings
+export CFLAGS="-w"
+export CXXFLAGS="-w"
 sudo ./configure --with-httpd-conf=/etc/apache2/sites-enabled
 sudo make all
 
@@ -112,8 +115,47 @@ define command{
 EOF
 
 echo ""
-echo "Step 11: Enabling Apache Modules"
+echo "Step 11: Configuring Apache for Nagios"
 echo "=========================================="
+# Verify Apache configuration was created by make install-webconf
+if [ ! -f /etc/apache2/sites-available/nagios.conf ]; then
+    echo "WARNING: Nagios Apache config not found, creating it manually..."
+    cat << 'APACHECONF' | sudo tee /etc/apache2/sites-available/nagios.conf > /dev/null
+ScriptAlias /nagios/cgi-bin "/usr/local/nagios/sbin"
+
+<Directory "/usr/local/nagios/sbin">
+   Options ExecCGI
+   AllowOverride None
+   Require all granted
+   AuthName "Nagios Access"
+   AuthType Basic
+   AuthUserFile /usr/local/nagios/etc/htpasswd.users
+   Require valid-user
+</Directory>
+
+Alias /nagios "/usr/local/nagios/share"
+
+<Directory "/usr/local/nagios/share">
+   Options None
+   AllowOverride None
+   Require all granted
+   AuthName "Nagios Access"
+   AuthType Basic
+   AuthUserFile /usr/local/nagios/etc/htpasswd.users
+   Require valid-user
+</Directory>
+APACHECONF
+    echo "Apache config created successfully."
+else
+    echo "Apache config already exists."
+fi
+
+# Enable the Nagios site now that config exists
+echo "Enabling Nagios site..."
+sudo ln -sf /etc/apache2/sites-available/nagios.conf /etc/apache2/sites-enabled/
+
+# Enable required Apache modules
+echo "Enabling Apache modules..."
 sudo a2enmod rewrite
 sudo a2enmod cgi
 
@@ -155,9 +197,8 @@ echo "IMPORTANT: Change this password after installation!"
 sudo htpasswd -bc /usr/local/nagios/etc/htpasswd.users nagiosadmin nagiosadmin
 
 echo ""
-echo "Step 15: Creating Symbolic Links"
+echo "Step 15: Creating Nagios Init Symlink"
 echo "=========================================="
-sudo ln -sf /etc/apache2/sites-available/nagios.conf /etc/apache2/sites-enabled/
 sudo ln -sf /etc/init.d/nagios /etc/rcS.d/S99nagios
 
 echo ""
@@ -172,17 +213,31 @@ cd /opt
 sudo wget --no-check-certificate -O nagios-plugins.tar.gz https://github.com/nagios-plugins/nagios-plugins/archive/release-2.4.6.tar.gz
 sudo tar xzf nagios-plugins.tar.gz
 cd nagios-plugins-release-2.4.6/
+# Suppress compiler warnings for plugins
+export CFLAGS="-w"
+export CXXFLAGS="-w"
 sudo ./tools/setup
 sudo ./configure
 sudo make
 sudo make install
 
 echo ""
-echo "Step 18: Starting Services"
+echo "Step 18: Verifying and Starting Services"
 echo "=========================================="
+echo "Testing Apache configuration..."
+sudo apache2ctl configtest
+
+echo "Restarting Apache..."
 sudo systemctl restart apache2.service
+
+echo "Starting Nagios..."
 sudo systemctl start nagios.service
-sudo systemctl status nagios.service --no-pager
+
+echo ""
+echo "Service Status:"
+sudo systemctl status apache2.service --no-pager -l
+echo ""
+sudo systemctl status nagios.service --no-pager -l
 
 echo ""
 echo "=========================================="
