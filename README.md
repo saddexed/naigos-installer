@@ -1,1 +1,0 @@
-This installer was created through the help of this article
