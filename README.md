@@ -1,202 +1,285 @@
-# Nagios Core - Non-Interactive Installation Script
+# Nagios Installation & Remote Monitoring Setup
 
-This repository contains a fully automated, non-interactive installation script for Nagios Core on Ubuntu systems. Based on a medium article linked below
+Complete automation scripts for Nagios Core installation and remote host monitoring via NRPE.
 
-## Quick Start
+Based on: [Nagios Practical - Medium Article](https://medium.com/@princeashok069/nagios-practical-028bd64c5c88)
 
-### Installation
+## 📁 Scripts Overview
+
+### 1. `install-nagios.sh` - Nagios Server Installation
+Main installation script for the Nagios monitoring server.
+
+**Features:**
+- Fully non-interactive installation
+- Automatic swap creation (1GB)
+- Configures needrestart for automatic service restarts
+- Installs Nagios Core 4.4.14 and Plugins 2.4.6
+- Complete Apache integration with authentication
+- Firewall configuration (UFW)
+- Displays server IP for easy access
+
+**Usage:**
 ```bash
-wget https://raw.githubusercontent.com/saddexed/naigos-installer/master/install-nagios.sh
 chmod +x install-nagios.sh
-./install-nagios.sh
+sudo ./install-nagios.sh
 ```
-Or in a single command if you prefer
+
+### 2. `install-nrpe-agent.sh` - NRPE Agent for Remote Hosts
+Installs the NRPE (Nagios Remote Plugin Executor) agent on remote machines to be monitored.
+
+**Features:**
+- Non-interactive NRPE installation
+- Configures NRPE to accept connections from Nagios server
+- Optional Apache2 installation with sample webpage
+- Displays host information for Nagios configuration
+
+**Usage:**
 ```bash
-wget https://raw.githubusercontent.com/saddexed/naigos-installer/master/install-nagios.sh && chmod +x install-nagios.sh && ./install-nagios.sh
+# With Nagios server IP as argument
+chmod +x install-nrpe-agent.sh
+sudo ./install-nrpe-agent.sh 203.0.113.45
+
+# Or interactive (prompts for IP)
+sudo ./install-nrpe-agent.sh
 ```
 
+**Parameters:**
+- `$1` - (Optional) IP address of Nagios server. If not provided, will prompt interactively.
 
+### 3. `add-nagios-host.sh` - Add Remote Hosts to Nagios
+Adds a remote host to Nagios monitoring configuration on the Nagios server.
 
-## Post-Installation
+**Features:**
+- Interactive host configuration
+- Creates proper Nagios configuration files
+- Includes NRPE checks (CPU, Memory, Disk, Swap)
+- Includes HTTP check for web services
+- Validates configuration before restarting
+- Provides immediate feedback and next steps
 
-### Access Nagios Web Interface
-**Username**: `nagiosadmin`  
-**Password**: `nagiosadmin`
+**Usage:**
+```bash
+# Run on the Nagios SERVER (not the remote host)
+chmod +x add-nagios-host.sh
+sudo ./add-nagios-host.sh
+```
 
-If you wish to change the password, run:
+**Prompts:**
+- Host name (e.g., `nagihost`)
+- Host IP address (e.g., `10.0.1.50`)
+- Host alias/description
+
+### 4. `web-server.sh` - Sample Web Server
+Your existing weather app deployment script (already present).
+
+## 🚀 Quick Start Guide
+
+### Step 1: Install Nagios Server
+
+```bash
+sudo ./install-nagios.sh
+```
+
+This will:
+- Update system and create swap
+- Install Nagios Core and Plugins
+- Set up Apache with authentication
+- Display server IP when complete
+
+**Access Nagios:**
+```
+http://YOUR_SERVER_IP/nagios
+Username: nagiosadmin
+Password: nagiosadmin (change this!)
+```
+
+### Step 2: Install NRPE Agent on Remote Host
+
+On your remote host machine:
+
+```bash
+# Get the Nagios server IP first
+# Then run:
+sudo ./install-nrpe-agent.sh 203.0.113.45
+```
+
+This will:
+- Install NRPE agent
+- Configure it to accept Nagios server connections
+- Optionally install Apache2 with a sample page
+- Display the remote host's IP
+
+### Step 3: Add Remote Host to Nagios Server
+
+Back on the Nagios server:
+
+```bash
+sudo ./add-nagios-host.sh
+```
+
+You'll be prompted for:
+- **Host name**: `nagihost` (or your choice)
+- **Host IP**: The remote host's IP address
+- **Alias**: `Remote Monitored Host`
+
+This creates a configuration file at:
+```
+/usr/local/nagios/etc/servers/nagihost.cfg
+```
+
+### Step 4: Verify in Web Interface
+
+1. Go to `http://YOUR_SERVER_IP/nagios`
+2. Navigate to **Hosts** section
+3. You should see your new host (`nagihost`)
+4. After 1-2 minutes, services will appear:
+   - CPU Load ✓
+   - Memory Usage ✓
+   - Disk Usage ✓
+   - Swap Usage ✓
+   - HTTP (if Apache installed) ✓
+
+## 📋 Configuration Files
+
+### Nagios Server
+
+- **Main Config**: `/usr/local/nagios/etc/nagios.cfg`
+- **Commands**: `/usr/local/nagios/etc/objects/commands.cfg`
+- **Contacts**: `/usr/local/nagios/etc/objects/contacts.cfg`
+- **Host Configs**: `/usr/local/nagios/etc/servers/*.cfg`
+- **Apache Config**: `/etc/apache2/sites-enabled/nagios.conf`
+- **Service File**: `/etc/systemd/system/nagios.service`
+
+### Remote Host (NRPE Agent)
+
+- **NRPE Config**: `/usr/local/nagios/etc/nrpe.cfg`
+- **NRPE Service**: `/etc/systemd/system/nrpe.service`
+
+## 🔧 Common Tasks
+
+### Change Nagios Admin Password
 
 ```bash
 sudo htpasswd /usr/local/nagios/etc/htpasswd.users nagiosadmin
 ```
 
-### Verify Services
+### Restart Nagios Service
 
-Check if Nagios is running:
-```bash
-sudo systemctl status nagios.service
-```
-
-Check if Apache is running:
-```bash
-sudo systemctl status apache2.service
-```
-
-### Verify Swap
-
-Check if swap is active:
-```bash
-sudo swapon --show
-free -h
-```
-
-
-## Installation Steps Overview
-
-The script performs the following steps in order:
-
-1. Configure needrestart for non-interactive mode
-2. Update system packages
-3. Create and enable 1GB swap file
-4. Install prerequisites (Apache, PHP, build tools)
-5. Configure Apache with PHP priority
-6. Download and compile Nagios Core
-7. Create Nagios user and groups
-8. Install Nagios binaries and configuration
-9. Configure Nagios monitoring directories
-10. Add NRPE command support
-11. Enable required Apache modules
-12. Configure UFW firewall
-13. Create systemd service
-14. Create default admin user
-15. Install Nagios plugins
-16. Start all services
-
-## Customization
-
-### Change Email Notifications
-
-Edit the contacts configuration:
-```bash
-sudo nano /usr/local/nagios/etc/objects/contacts.cfg
-```
-
-### Add Remote Hosts
-
-Create host configuration files in:
-```bash
-sudo nano /usr/local/nagios/etc/servers/hostname.cfg
-```
-
-Then restart Nagios:
 ```bash
 sudo systemctl restart nagios.service
 ```
 
-## Monitoring Remote Servers with NRPE
-
-This repository includes scripts to monitor remote servers using NRPE (Nagios Remote Plugin Executor).
-
-### Setup Overview
-
-**Step 1: Install NRPE Agent on Remote Server**
-
-On the weather app server (or any remote server you want to monitor):
+### View Nagios Logs
 
 ```bash
-wget https://raw.githubusercontent.com/saddexed/naigos-installer/master/install-nrpe-client.sh
-chmod +x install-nrpe-client.sh
-./install-nrpe-client.sh
+sudo tail -f /usr/local/nagios/var/nagios.log
 ```
 
-When prompted, enter your Nagios server's IP address.
+### Add Another Host
 
-**Step 2: Configure Nagios Server to Monitor the Remote Host**
+Simply run `add-nagios-host.sh` again with different host information.
 
-On the Nagios server, download the weather app configuration:
+### Edit Host Configuration
 
 ```bash
-wget https://raw.githubusercontent.com/saddexed/naigos-installer/master/weatherapp.cfg
+sudo vi /usr/local/nagios/etc/servers/nagihost.cfg
+sudo systemctl restart nagios.service
 ```
 
-Edit the configuration file to replace `WEATHERAPP_SERVER_IP` with your weather app server's actual IP address:
+### Check NRPE Service (on remote host)
 
 ```bash
-sudo sed -i 's/WEATHERAPP_SERVER_IP/192.168.1.100/g' weatherapp.cfg
+sudo systemctl status nrpe.service
 ```
 
-Then move it to the Nagios configuration directory:
+### Test NRPE Connection (from Nagios server)
 
 ```bash
-sudo mv weatherapp.cfg /usr/local/nagios/etc/servers/
-sudo chown nagios:nagios /usr/local/nagios/etc/servers/weatherapp.cfg
+/usr/local/nagios/libexec/check_nrpe -H <REMOTE_HOST_IP>
 ```
 
-**Step 3: Verify Nagios Configuration**
+## 🐛 Troubleshooting
 
-Verify the configuration syntax:
+### Services Not Appearing
+
+1. Wait 2-3 minutes for initial check
+2. Verify NRPE is running on remote host:
+   ```bash
+   sudo systemctl status nrpe.service
+   ```
+3. Test NRPE connection from Nagios server:
+   ```bash
+   /usr/local/nagios/libexec/check_nrpe -H <HOST_IP>
+   ```
+
+### Hosts Show as "PENDING" or "UNKNOWN"
+
+- Check if NRPE agent is running on the remote host
+- Verify firewall allows port 5666 (NRPE default port)
+- Check if the host IP in config is correct:
+   ```bash
+   sudo cat /usr/local/nagios/etc/servers/nagihost.cfg
+   ```
+
+### Authentication Required But Not Prompting
+
+- Clear browser cache
+- Try incognito/private window
+- Verify htpasswd file exists:
+   ```bash
+   ls -l /usr/local/nagios/etc/htpasswd.users
+   ```
+
+### Nagios Won't Start
+
+Check configuration syntax:
 ```bash
 sudo /usr/local/nagios/bin/nagios -v /usr/local/nagios/etc/nagios.cfg
 ```
 
-Restart Nagios to apply changes:
+View service logs:
 ```bash
-sudo systemctl restart nagios.service
+sudo journalctl -u nagios.service -n 50
 ```
 
-### What Gets Monitored
+### NRPE Installation Fails
 
-The weather app server monitoring configuration includes:
+Ensure you're using a supported OS (Ubuntu 18.04+):
+```bash
+lsb_release -a
+```
 
-- **HTTP Service** - Checks if the web application is responding
-- **Nginx Service** - TCP port 80 connectivity
-- **CPU Load** - Server CPU usage
-- **Memory Usage** - RAM utilization
-- **Disk Space** - Disk usage
-- **Total Processes** - Number of running processes
-- **SSH Service** - Server accessibility via SSH
+## 🔐 Security Recommendations
 
-### Monitoring Multiple Servers
-
-To monitor additional remote servers:
-
-1. Run `install-nrpe-client.sh` on each remote server
-2. Copy `weatherapp.cfg` and customize it for each server:
+1. **Change Default Password**
    ```bash
-   cp weatherapp.cfg myserver.cfg
-   sudo nano myserver.cfg  # Update host_name and address
-   sudo mv myserver.cfg /usr/local/nagios/etc/servers/
+   sudo htpasswd /usr/local/nagios/etc/htpasswd.users nagiosadmin
    ```
-3. Restart Nagios
 
-### Troubleshooting
+2. **Restrict Firewall** - Only allow your IP:
+   ```bash
+   sudo ufw delete allow from anywhere to anywhere port 80
+   sudo ufw allow from 203.0.113.1 to anywhere port 80
+   ```
 
-**NRPE Connection Issues**
+3. **Enable HTTPS** - Configure SSL certificates in Apache config
 
-Test NRPE connectivity from the Nagios server:
-```bash
-/usr/local/nagios/libexec/check_nrpe -H <remote-server-ip>
-```
+4. **Disable NRPE Access** - Restrict NRPE to Nagios server only:
+   ```bash
+   sudo sed -i 's/^allowed_hosts=.*/allowed_hosts=127.0.0.1,NAGIOS_IP/' /usr/local/nagios/etc/nrpe.cfg
+   sudo systemctl restart nrpe.service
+   ```
 
-If connection fails:
-- Verify the remote server has NRPE running: `sudo systemctl status nrpe.service`
-- Check firewall allows UDP port 5666: `sudo ufw status`
-- Verify allowed_hosts in `/etc/nagios/nrpe.cfg` includes the Nagios server IP
+## 📚 Additional Resources
 
-**Nagios Not Picking Up New Configuration**
+- [Nagios Official Documentation](https://assets.nagios.com/downloads/nagioscore/docs/nagioscore/4.4/en/)
+- [NRPE Documentation](https://assets.nagios.com/downloads/nagioscore/docs/nagios-plugins/NRPE.pdf)
+- [Original Medium Article](https://medium.com/@princeashok069/nagios-practical-028bd64c5c88)
 
-- Verify syntax: `sudo /usr/local/nagios/bin/nagios -v /usr/local/nagios/etc/nagios.cfg`
-- Restart Nagios: `sudo systemctl restart nagios.service`
-- Check Nagios status: `sudo systemctl status nagios.service`
-
-## Credits
-
-Based on the excellent guide by Prince Ashok:
-- [Nagios Practical - Medium Article](https://medium.com/@princeashok069/nagios-practical-028bd64c5c88)
-
-## License
+## 📝 License
 
 MIT License - Feel free to use and modify as needed.
 
-## Contributing
+## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Feel free to submit a Pull Request.
