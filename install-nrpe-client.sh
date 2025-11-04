@@ -44,17 +44,51 @@ echo "NRPE configured to accept connections from: $NAGIOS_SERVER_IP"
 echo ""
 echo "Step 4: Enabling and Starting NRPE Service"
 echo "=========================================="
-sudo systemctl enable nrpe.service
-sudo systemctl restart nrpe.service
+
+# Try different service names
+if systemctl list-unit-files | grep -q nagios-nrpe-server; then
+    echo "Found nagios-nrpe-server service"
+    sudo systemctl enable nagios-nrpe-server.service
+    sudo systemctl restart nagios-nrpe-server.service
+    NRPE_SERVICE="nagios-nrpe-server.service"
+elif systemctl list-unit-files | grep -q nrpe; then
+    echo "Found nrpe service"
+    sudo systemctl enable nrpe.service
+    sudo systemctl restart nrpe.service
+    NRPE_SERVICE="nrpe.service"
+else
+    echo "NRPE service not found in systemd. Trying manual startup..."
+    if [ -x /etc/init.d/nagios-nrpe-server ]; then
+        sudo /etc/init.d/nagios-nrpe-server restart
+        NRPE_SERVICE="/etc/init.d/nagios-nrpe-server"
+    elif [ -x /etc/init.d/nrpe ]; then
+        sudo /etc/init.d/nrpe restart
+        NRPE_SERVICE="/etc/init.d/nrpe"
+    else
+        echo "ERROR: Could not find NRPE service! Please check NRPE installation."
+        exit 1
+    fi
+fi
 
 echo ""
 echo "Step 5: Verifying NRPE Service"
 echo "=========================================="
-sudo systemctl status nrpe.service --no-pager -l
+
+if [[ "$NRPE_SERVICE" == *"systemd"* ]] || [[ "$NRPE_SERVICE" == *".service"* ]]; then
+    sudo systemctl status "$NRPE_SERVICE" --no-pager -l
+else
+    sudo "$NRPE_SERVICE" status
+fi
 
 echo ""
 echo "Testing NRPE locally..."
-/usr/lib/nagios/plugins/check_nrpe -H 127.0.0.1
+if [ -x /usr/lib/nagios/plugins/check_nrpe ]; then
+    /usr/lib/nagios/plugins/check_nrpe -H 127.0.0.1
+elif [ -x /usr/lib64/nagios/plugins/check_nrpe ]; then
+    /usr/lib64/nagios/plugins/check_nrpe -H 127.0.0.1
+else
+    echo "check_nrpe plugin not found in standard locations"
+fi
 
 echo ""
 echo "=========================================="
@@ -67,4 +101,8 @@ echo ""
 echo "On your Nagios server, you can now test connectivity with:"
 echo "  /usr/local/nagios/libexec/check_nrpe -H <this-server-ip>"
 echo ""
+echo "If NRPE is not responding, check:"
+echo "  - Firewall: sudo ufw status | grep 5666"
+echo "  - NRPE config: grep allowed_hosts /etc/nagios/nrpe.cfg"
+echo "  - Service status: sudo systemctl status $NRPE_SERVICE"
 echo "=========================================="
