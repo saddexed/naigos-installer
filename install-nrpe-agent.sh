@@ -43,8 +43,12 @@ sudo apt-get update -y
 echo ""
 echo "Step 3: Installing Prerequisites"
 echo "=========================================="
-sudo apt-get install -y wget tar gzip
-sudo apt-get install -y autoconf gcc libc6 make libssl-dev
+# Install SSL development libraries FIRST - these are critical for NRPE compilation
+sudo apt-get install -y libssl-dev libssl3 openssl
+# Install build tools
+sudo apt-get install -y wget tar gzip autoconf gcc libc6 make
+# Install additional NRPE dependencies
+sudo apt-get install -y pkg-config
 
 echo ""
 echo "Step 4: Downloading NRPE Agent"
@@ -80,12 +84,13 @@ if [ ! -f /usr/local/nagios/bin/nrpe ]; then
         cd nrpe-4.0.3
     fi
     
-    # Suppress warnings with -w flag
+    # Suppress warnings and set environment for SSL
     export CFLAGS="-w"
     export CXXFLAGS="-w"
+    export PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig"
     
     echo "Running configure..."
-    sudo ./configure --enable-command-args
+    sudo -E ./configure --enable-command-args --with-ssl=/usr/include/openssl --with-ssl-lib=/usr/lib/x86_64-linux-gnu
     
     echo "Building NRPE..."
     sudo make
