@@ -54,40 +54,61 @@ sudo wget http://assets.nagios.com/downloads/nagiosxi/agents/linux-nrpe-agent.ta
 sudo tar xzf linux-nrpe-agent.tar.gz
 
 echo ""
-echo "Step 5: Installing NRPE Agent"
+echo "Step 5: Compiling NRPE Agent Manually"
 echo "=========================================="
+# The fullinstall script often fails, so we'll compile manually
 cd linux-nrpe-agent
-# Run fullinstall non-interactively by piping 'y' for all prompts
-echo "y" | sudo ./fullinstall || true
 
-# Fullinstall may have issues with xinetd, so we'll configure systemd instead
+# First, try the standard approach with verbose output
+echo "Attempting fullinstall with error reporting..."
+sudo bash -x ./fullinstall 2>&1 | tee /tmp/nrpe-install.log
+
+# Check if NRPE binary exists
+if [ ! -f /usr/local/nagios/bin/nrpe ]; then
+    echo ""
+    echo "fullinstall failed. Attempting manual compilation..."
+    
+    # Check if nrpe source directory exists
+    if [ -d nrpe ]; then
+        cd nrpe
+    else
+        # Try to find and download NRPE source directly
+        echo "Downloading NRPE source directly..."
+        cd /opt
+        sudo wget https://github.com/NagiosEnterprises/nrpe/releases/download/nrpe-4.0.3/nrpe-4.0.3.tar.gz
+        sudo tar xzf nrpe-4.0.3.tar.gz
+        cd nrpe-4.0.3
+    fi
+    
+    # Suppress warnings with -w flag
+    export CFLAGS="-w"
+    export CXXFLAGS="-w"
+    
+    echo "Running configure..."
+    sudo ./configure --enable-command-args
+    
+    echo "Building NRPE..."
+    sudo make
+    
+    echo "Installing NRPE..."
+    sudo make install-groups-users
+    sudo make install
+    sudo make install-config
+    sudo make install-init
+else
+    echo "✓ NRPE successfully compiled by fullinstall"
+fi
+
 echo ""
-echo "Step 5b: Configuring NRPE with systemd"
+echo "Step 5b: Verifying NRPE Installation"
 echo "=========================================="
-
-# Create systemd service file if it doesn't exist
-if [ ! -f /etc/systemd/system/nrpe.service ]; then
-    echo "Creating NRPE systemd service..."
-    cat << 'SYSTEMD' | sudo tee /etc/systemd/system/nrpe.service > /dev/null
-[Unit]
-Description=Nagios Remote Plugin Executor
-After=syslog.target network.target
-
-[Service]
-Type=simple
-User=nagios
-Group=nagios
-ProtectSystem=full
-ProtectHome=yes
-NoNewPrivileges=yes
-ExecStart=/usr/local/nagios/bin/nrpe -c /usr/local/nagios/etc/nrpe.cfg -f
-StandardOutput=syslog
-StandardError=syslog
-SyslogIdentifier=nrpe
-
-[Install]
-WantedBy=multi-user.target
-SYSTEMD
+if [ -f /usr/local/nagios/bin/nrpe ]; then
+    echo "✓ NRPE binary found at /usr/local/nagios/bin/nrpe"
+    ls -l /usr/local/nagios/bin/nrpe
+else
+    echo "✗ NRPE binary not found - installation may have failed"
+    echo "Check /tmp/nrpe-install.log for details"
+    exit 1
 fi
 
 echo ""
@@ -97,34 +118,65 @@ echo "=========================================="
 if [ -f /usr/local/nagios/etc/nrpe.cfg ]; then
     sudo sed -i "s/^allowed_hosts=127.0.0.1/allowed_hosts=127.0.0.1,$NAGIOS_SERVER_IP/" /usr/local/nagios/etc/nrpe.cfg
     echo "✓ NRPE configured to accept connections from: $NAGIOS_SERVER_IP"
+    
+    # Also enable command args if not already enabled
+    sudo sed -i 's/^# *dont_blame_nrpe=0/dont_blame_nrpe=1/' /usr/local/nagios/etc/nrpe.cfg
 else
     echo "WARNING: NRPE config file not found at /usr/local/nagios/etc/nrpe.cfg"
-    echo "This may be because the fullinstall script failed."
+    echo "This may be because the compilation failed."
 fi
 
 echo ""
-echo "Step 7: Starting NRPE Service"
+echo "Step 7: Setting Up Systemd Service"
 echo "=========================================="
-sudo systemctl daemon-reload
-sudo systemctl restart nrpe.service 2>/dev/null || {
-    echo "Attempting to start NRPE from installed location..."
-    sudo /usr/local/nagios/bin/nrpe -c /usr/local/nagios/etc/nrpe.cfg -f &
-    NRPE_PID=$!
-    sleep 1
-    if ps -p $NRPE_PID > /dev/null; then
-        echo "✓ NRPE started (PID: $NRPE_PID)"
-    else
-        echo "✗ Failed to start NRPE"
-    fi
-}
+# Create/update systemd service file with correct configuration
+cat << 'SYSTEMD' | sudo tee /etc/systemd/system/nrpe.service > /dev/null
+[Unit]
+Description=Nagios Remote Plugin Executor
+After=network.target
 
-# Try to enable and start via systemd if available
-if systemctl list-unit-files | grep -q nrpe.service; then
-    sudo systemctl enable nrpe.service
+[Service]
+Type=simple
+User=nagios
+Group=nagios
+ExecStart=/usr/local/nagios/bin/nrpe -c /usr/local/nagios/etc/nrpe.cfg -f
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+
+sudo systemctl daemon-reload
+echo "✓ Systemd service file created"
+
+echo ""
+echo "Step 8: Starting NRPE Service"
+echo "=========================================="
+sudo systemctl enable nrpe.service
+sudo systemctl restart nrpe.service
+
+echo ""
+echo "Step 8: Starting NRPE Service"
+echo "=========================================="
+sudo systemctl enable nrpe.service
+sudo systemctl restart nrpe.service
+
+echo ""
+sleep 2
+
+# Verify service is running
+if sudo systemctl is-active --quiet nrpe.service; then
+    echo "✓ NRPE service is running"
+else
+    echo "✗ NRPE service failed to start"
+    echo "Checking systemd logs..."
+    sudo journalctl -u nrpe.service -n 20 --no-pager
+    exit 1
 fi
 
 echo ""
-echo "Step 8: Installing Apache Web Server (Optional)"
+echo "Step 9: Installing Apache Web Server (Optional)"
 echo "=========================================="
 read -p "Do you want to install Apache2 web server for HTTP monitoring? (y/n): " INSTALL_APACHE
 
@@ -134,7 +186,7 @@ if [ "$INSTALL_APACHE" = "y" ] || [ "$INSTALL_APACHE" = "Y" ]; then
     sudo systemctl enable apache2.service
     
     echo ""
-    echo "Step 9: Deploying Sample Webpage"
+    echo "Step 10: Deploying Sample Webpage"
     echo "=========================================="
     cd /var/www/html
     sudo rm -f index.html
@@ -183,24 +235,18 @@ else
 fi
 
 echo ""
-echo "Step 10: Displaying Host Information"
+echo "Step 11: Displaying Host Information"
 echo "=========================================="
-echo "This host's IP address:"
 HOST_IP=$(hostname -I | awk '{print $1}')
-echo "$HOST_IP"
+echo "This host's IP address: $HOST_IP"
 
 echo ""
 echo "NRPE Service Status:"
-if systemctl list-unit-files | grep -q nrpe.service; then
-    sudo systemctl status nrpe.service --no-pager -l
-else
-    echo "NRPE is running but not via systemd"
-    ps aux | grep nrpe | grep -v grep || echo "NRPE process not found"
-fi
+sudo systemctl status nrpe.service --no-pager
 
 echo ""
 echo "Verifying NRPE is listening on port 5666:"
-sudo netstat -tlnp 2>/dev/null | grep 5666 || echo "Checking if port 5666 is open..."
+sudo ss -tlnp 2>/dev/null | grep 5666 || sudo netstat -tlnp 2>/dev/null | grep 5666 || echo "Checking if port 5666 is open..."
 
 echo ""
 echo "=========================================="
