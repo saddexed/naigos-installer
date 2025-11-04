@@ -44,6 +44,7 @@ echo ""
 echo "Step 3: Installing Prerequisites"
 echo "=========================================="
 sudo apt-get install -y wget tar gzip
+sudo apt-get install -y autoconf gcc libc6 make libssl-dev
 
 echo ""
 echo "Step 4: Downloading NRPE Agent"
@@ -57,21 +58,70 @@ echo "Step 5: Installing NRPE Agent"
 echo "=========================================="
 cd linux-nrpe-agent
 # Run fullinstall non-interactively by piping 'y' for all prompts
-echo "y" | sudo ./fullinstall
+echo "y" | sudo ./fullinstall || true
+
+# Fullinstall may have issues with xinetd, so we'll configure systemd instead
+echo ""
+echo "Step 5b: Configuring NRPE with systemd"
+echo "=========================================="
+
+# Create systemd service file if it doesn't exist
+if [ ! -f /etc/systemd/system/nrpe.service ]; then
+    echo "Creating NRPE systemd service..."
+    cat << 'SYSTEMD' | sudo tee /etc/systemd/system/nrpe.service > /dev/null
+[Unit]
+Description=Nagios Remote Plugin Executor
+After=syslog.target network.target
+
+[Service]
+Type=simple
+User=nagios
+Group=nagios
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=yes
+ExecStart=/usr/local/nagios/bin/nrpe -c /usr/local/nagios/etc/nrpe.cfg -f
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=nrpe
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+fi
 
 echo ""
 echo "Step 6: Configuring NRPE for Nagios Server"
 echo "=========================================="
 # Update the NRPE config to allow connections from the Nagios server
-sudo sed -i "s/^allowed_hosts=127.0.0.1/allowed_hosts=127.0.0.1,$NAGIOS_SERVER_IP/" /usr/local/nagios/etc/nrpe.cfg
-
-echo "✓ NRPE configured to accept connections from: $NAGIOS_SERVER_IP"
+if [ -f /usr/local/nagios/etc/nrpe.cfg ]; then
+    sudo sed -i "s/^allowed_hosts=127.0.0.1/allowed_hosts=127.0.0.1,$NAGIOS_SERVER_IP/" /usr/local/nagios/etc/nrpe.cfg
+    echo "✓ NRPE configured to accept connections from: $NAGIOS_SERVER_IP"
+else
+    echo "WARNING: NRPE config file not found at /usr/local/nagios/etc/nrpe.cfg"
+    echo "This may be because the fullinstall script failed."
+fi
 
 echo ""
 echo "Step 7: Starting NRPE Service"
 echo "=========================================="
-sudo systemctl restart nrpe.service
-sudo systemctl enable nrpe.service
+sudo systemctl daemon-reload
+sudo systemctl restart nrpe.service 2>/dev/null || {
+    echo "Attempting to start NRPE from installed location..."
+    sudo /usr/local/nagios/bin/nrpe -c /usr/local/nagios/etc/nrpe.cfg -f &
+    NRPE_PID=$!
+    sleep 1
+    if ps -p $NRPE_PID > /dev/null; then
+        echo "✓ NRPE started (PID: $NRPE_PID)"
+    else
+        echo "✗ Failed to start NRPE"
+    fi
+}
+
+# Try to enable and start via systemd if available
+if systemctl list-unit-files | grep -q nrpe.service; then
+    sudo systemctl enable nrpe.service
+fi
 
 echo ""
 echo "Step 8: Installing Apache Web Server (Optional)"
@@ -136,11 +186,21 @@ echo ""
 echo "Step 10: Displaying Host Information"
 echo "=========================================="
 echo "This host's IP address:"
-hostname -I
+HOST_IP=$(hostname -I | awk '{print $1}')
+echo "$HOST_IP"
 
 echo ""
 echo "NRPE Service Status:"
-sudo systemctl status nrpe.service --no-pager -l
+if systemctl list-unit-files | grep -q nrpe.service; then
+    sudo systemctl status nrpe.service --no-pager -l
+else
+    echo "NRPE is running but not via systemd"
+    ps aux | grep nrpe | grep -v grep || echo "NRPE process not found"
+fi
+
+echo ""
+echo "Verifying NRPE is listening on port 5666:"
+sudo netstat -tlnp 2>/dev/null | grep 5666 || echo "Checking if port 5666 is open..."
 
 echo ""
 echo "=========================================="
