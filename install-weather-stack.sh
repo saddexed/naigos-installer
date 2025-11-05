@@ -160,7 +160,12 @@ EOF
         rm -f /etc/nginx/sites-enabled/default
     fi
     nginx -t
-    systemctl reload nginx
+    systemctl enable nginx >/dev/null 2>&1
+    if systemctl is-active --quiet nginx; then
+        systemctl reload nginx
+    else
+        systemctl start nginx
+    fi
 }
 
 configure_firewall() {
