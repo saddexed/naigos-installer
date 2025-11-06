@@ -21,16 +21,20 @@ wget https://raw.githubusercontent.com/saddexed/naigos-installer/master/install-
 chmod +x install-weather-stack.sh
 sudo ./install-weather-stack.sh
 ```
+Single command
+```bash
+wget https://raw.githubusercontent.com/saddexed/naigos-installer/master/install-weather-stack.sh && chmod +x install-weather-stack.sh && sudo ./install-weather-stack.sh
+```
 What the script does:
-- Installs Ansible, Git, Nginx, and rsync
+- Installs Ansible, Git, Apache, and rsync
 - Clones the [Weather-App](https://github.com/saddexed/Weather-App) repo into `/opt/weather-app`
-- Serves the static site via Nginx from `/var/www/weather-app`
+- Serves the static site via Apache from `/var/www/weather-app`
 - Creates an Ansible playbook and runs it immediately
 - Registers a systemd timer that re-runs the playbook every 10 minutes to pull the latest commit
 
 After installation you can verify everything with:
 ```bash
-systemctl status nginx
+systemctl status apache2
 systemctl status weather-app-update.timer
 systemctl status weather-app-update.service
 curl -I http://localhost/health

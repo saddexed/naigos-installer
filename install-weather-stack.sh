@@ -22,9 +22,8 @@ PLAYBOOK_PATH="$ANSIBLE_DIR/deploy-weather-app.yml"
 ANSIBLE_LOG="/var/log/weather-app-update.log"
 SERVICE_FILE="/etc/systemd/system/weather-app-update.service"
 TIMER_FILE="/etc/systemd/system/weather-app-update.timer"
-NGINX_SITE="/etc/nginx/sites-available/weather-app.conf"
-NGINX_LINK="/etc/nginx/sites-enabled/weather-app.conf"
-UFW_RULE_NAME="Nginx Full"
+APACHE_SITE="/etc/apache2/sites-available/weather-app.conf"
+UFW_RULE_NAME="Apache Full"
 
 log() {
     echo -e "\n=========================================="
@@ -43,7 +42,7 @@ install_packages() {
     log "Installing required packages"
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y
-    apt-get install -y git ansible nginx rsync curl
+    apt-get install -y git ansible apache2 rsync curl
 }
 
 prepare_directories() {
@@ -132,39 +131,46 @@ EOF
     chmod 0644 "$ANSIBLE_LOG"
 }
 
-configure_nginx() {
-    log "Configuring Nginx for Weather-App"
-    cat <<EOF > "$NGINX_SITE"
-server {
-    listen 80;
-    server_name _;
-
-    root $WEB_ROOT;
-    index index.html;
-
-    access_log /var/log/nginx/weather-app.access.log;
-    error_log /var/log/nginx/weather-app.error.log;
-
-    location / {
-        try_files \$uri \$uri/ =404;
-    }
-
-    location = /health {
-        add_header Content-Type text/plain;
-        return 200 'OK';
-    }
-}
-EOF
-    ln -sf "$NGINX_SITE" "$NGINX_LINK"
-    if [[ -f /etc/nginx/sites-enabled/default ]]; then
-        rm -f /etc/nginx/sites-enabled/default
+disable_nginx_if_present() {
+    if systemctl list-unit-files | grep -q '^nginx.service'; then
+        log "Disabling Nginx service to avoid port conflicts"
+        systemctl disable --now nginx || true
     fi
-    nginx -t
-    systemctl enable nginx >/dev/null 2>&1
-    if systemctl is-active --quiet nginx; then
-        systemctl reload nginx
+}
+
+configure_apache() {
+    log "Configuring Apache for Weather-App"
+    cat <<EOF > "$APACHE_SITE"
+<VirtualHost *:80>
+    ServerName _
+    DocumentRoot $WEB_ROOT
+
+    <Directory $WEB_ROOT>
+        Options FollowSymLinks
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    ErrorLog \\${APACHE_LOG_DIR}/weather-app-error.log
+    CustomLog \\${APACHE_LOG_DIR}/weather-app-access.log combined
+
+    Alias /health $WEB_ROOT/health.html
+    <Location /health>
+        Require all granted
+    </Location>
+</VirtualHost>
+EOF
+
+    if [[ -f /etc/apache2/sites-enabled/000-default.conf ]]; then
+        a2dissite 000-default.conf >/dev/null 2>&1 || true
+    fi
+
+    a2ensite weather-app.conf >/dev/null 2>&1
+    systemctl enable apache2 >/dev/null 2>&1
+    if systemctl is-active --quiet apache2; then
+        systemctl reload apache2
     else
-        systemctl start nginx
+        systemctl start apache2
     fi
 }
 
@@ -236,7 +242,8 @@ main() {
     prepare_directories
     write_ansible_playbook
     write_ansible_cfg
-    configure_nginx
+    disable_nginx_if_present
+    configure_apache
     configure_firewall
     run_initial_deploy
     write_systemd_units
