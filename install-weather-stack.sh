@@ -140,6 +140,8 @@ disable_nginx_if_present() {
 
 configure_apache() {
     log "Configuring Apache for Weather-App"
+    local apache_log_dir="${APACHE_LOG_DIR:-/var/log/apache2}"
+
     cat <<EOF > "$APACHE_SITE"
 <VirtualHost *:80>
     ServerName _
@@ -151,8 +153,8 @@ configure_apache() {
         Require all granted
     </Directory>
 
-    ErrorLog \\${APACHE_LOG_DIR}/weather-app-error.log
-    CustomLog \\${APACHE_LOG_DIR}/weather-app-access.log combined
+    ErrorLog ${apache_log_dir}/weather-app-error.log
+    CustomLog ${apache_log_dir}/weather-app-access.log combined
 
     Alias /health $WEB_ROOT/health.html
     <Location /health>
