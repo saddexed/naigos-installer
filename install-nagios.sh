@@ -180,6 +180,12 @@ sudo htpasswd -bc /usr/local/nagios/etc/htpasswd.users admin admin123
 sudo chown nagios:nagios /usr/local/nagios/etc/htpasswd.users
 sudo chmod 640 /usr/local/nagios/etc/htpasswd.users
 
+echo ""
+echo "Aligning Nagios CGI and contacts with admin account"
+echo "=========================================="
+sudo sed -i 's/nagiosadmin/admin/g' /usr/local/nagios/etc/cgi.cfg
+sudo sed -i 's/nagiosadmin/admin/g' /usr/local/nagios/etc/objects/contacts.cfg
+
 if [ -f /usr/local/nagios/etc/htpasswd.users ]; then
     echo "Password file created successfully."
     ls -l /usr/local/nagios/etc/htpasswd.users
