@@ -204,6 +204,18 @@ CRIT=${2:-1800}
 SERVICE="weather-app-update.service"
 TIMER="weather-app-update.timer"
 
+calc_age() {
+    local ts_us="$1"
+    if [[ "$ts_us" =~ ^[0-9]+$ ]] && [[ "$ts_us" -gt 0 ]]; then
+        local now ts_sec
+        now=$(date +%s)
+        ts_sec=$(( ts_us / 1000000 ))
+        echo $(( now - ts_sec ))
+    else
+        echo -1
+    fi
+}
+
 if ! systemctl list-unit-files "$SERVICE" >/dev/null 2>&1; then
     echo "CRITICAL - unit $SERVICE not found"
     exit 2
@@ -217,7 +229,6 @@ fi
 service_state=$(systemctl show "$SERVICE" -p ActiveState --value 2>/dev/null || echo "unknown")
 service_result=$(systemctl show "$SERVICE" -p Result --value 2>/dev/null || echo "unknown")
 exec_status=$(systemctl show "$SERVICE" -p ExecMainStatus --value 2>/dev/null || echo "unknown")
-last_trigger=$(systemctl show "$TIMER" -p LastTriggerUSec --value 2>/dev/null || echo "0")
 
 if [[ "$service_state" == "failed" ]]; then
     echo "CRITICAL - $SERVICE state is failed"
@@ -234,11 +245,16 @@ if [[ "$exec_status" != "0" && "$exec_status" != "n/a" ]]; then
     exit 2
 fi
 
-age_sec=-1
-if [[ "$last_trigger" =~ ^[0-9]+$ ]] && [[ "$last_trigger" != "0" ]]; then
-    now=$(date +%s)
-    last_trigger_sec=$(( last_trigger / 1000000 ))
-    age_sec=$(( now - last_trigger_sec ))
+last_trigger_us=$(systemctl show "$TIMER" -p LastTriggerUSec --value 2>/dev/null || echo "0")
+last_exit_us=$(systemctl show "$SERVICE" -p ExecMainExitTimestampUSec --value 2>/dev/null || echo "0")
+last_start_us=$(systemctl show "$SERVICE" -p ExecMainStartTimestampUSec --value 2>/dev/null || echo "0")
+
+age_sec=$(calc_age "$last_trigger_us")
+if [[ $age_sec -lt 0 ]]; then
+    age_sec=$(calc_age "$last_exit_us")
+fi
+if [[ $age_sec -lt 0 ]]; then
+    age_sec=$(calc_age "$last_start_us")
 fi
 
 if [[ $age_sec -ge 0 ]]; then
@@ -249,11 +265,11 @@ if [[ $age_sec -ge 0 ]]; then
         echo "WARNING - last run ${age_sec}s ago (>=${WARN}s) | age=${age_sec}s;${WARN};${CRIT};0"
         exit 1
     else
-        echo "OK - last run ${age_sec}s ago, result ${service_result} | age=${age_sec}s;${WARN};${CRIT};0"
+        echo "OK - last run ${age_sec}s ago | age=${age_sec}s;${WARN};${CRIT};0"
         exit 0
     fi
 else
-    echo "OK - timer has not triggered yet | age=0s;${WARN};${CRIT};0"
+    echo "OK - updater has not executed yet | age=0s;${WARN};${CRIT};0"
     exit 0
 fi
 EOF
@@ -287,7 +303,7 @@ EOF
     chmod 0644 "$NAGIOS_SERVICE_CFG"
 }
 
-reload_nagios() {
+restart_nagios() {
     if [[ ! -x /usr/local/nagios/bin/nagios ]]; then
         return
     fi
@@ -296,7 +312,7 @@ reload_nagios() {
     local verify_log="/tmp/weather-app-nagios-verify.log"
     if /usr/local/nagios/bin/nagios -v "$NAGIOS_CFG" > "$verify_log" 2>&1; then
         log "Restarting Nagios"
-        systemctl restart nagios
+        systemctl restart nagios.service
         rm -f "$verify_log"
     else
         log "Nagios configuration check failed; see $verify_log"
@@ -371,7 +387,7 @@ main() {
     run_initial_deploy
     write_systemd_units
     install_nagios_check
-    reload_nagios
+    restart_nagios
     show_summary
 }
 

@@ -31,7 +31,7 @@ What the script does:
 - Serves the static site via Apache from `/var/www/weather-app`
 - Creates an Ansible playbook and runs it immediately
 - Registers a systemd timer that re-runs the playbook every 10 minutes to pull the latest commit
-- Installs a Nagios plugin and service check (`Weather App Updater`) to watch the update timer
+- Adds a Nagios service check (`Weather App Updater`) to watch the automation job
 
 After installation you can verify everything with:
 ```bash
@@ -42,20 +42,20 @@ curl -I http://localhost/health
 /usr/local/nagios/bin/nagios -v /usr/local/nagios/etc/nagios.cfg
 ```
 
-Inside the Nagios UI, look for the service **Weather App Updater** under `localhost` to confirm the automation check is healthy.
+In the Nagios UI, look for the **Weather App Updater** service on `localhost`. It reports the age of the last successful deploy run and will warn after 15 minutes or alert after 30 minutes without a successful execution.
 
 
 
 ## Post-Installation
 
 ### Access Nagios Web Interface
-**Username**: `nagiosadmin`  
-**Password**: `nagiosadmin`
+**Username**: `admin`  
+**Password**: `admin123`
 
 If you wish to change the password, run:
 
 ```bash
-sudo htpasswd /usr/local/nagios/etc/htpasswd.users nagiosadmin
+sudo htpasswd /usr/local/nagios/etc/htpasswd.users admin
 ```
 
 ### Verify Services
