@@ -295,14 +295,9 @@ reload_nagios() {
     log "Validating Nagios configuration"
     local verify_log="/tmp/weather-app-nagios-verify.log"
     if /usr/local/nagios/bin/nagios -v "$NAGIOS_CFG" > "$verify_log" 2>&1; then
-        log "Reloading Nagios"
-        if systemctl reload nagios.service; then
-            rm -f "$verify_log"
-        else
-            log "Reload not supported; restarting Nagios"
-            systemctl restart nagios.service
-            rm -f "$verify_log"
-        fi
+        log "Restarting Nagios"
+        systemctl restart nagios
+        rm -f "$verify_log"
     else
         log "Nagios configuration check failed; see $verify_log"
         cat "$verify_log"
