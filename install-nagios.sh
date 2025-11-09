@@ -174,8 +174,8 @@ sudo systemctl enable nagios.service
 echo ""
 echo "Step 15: Creating Nagios Admin User"
 echo "=========================================="
-echo "Creating nagiosadmin user with password: nagiosadmin"
-sudo htpasswd -bc /usr/local/nagios/etc/htpasswd.users nagiosadmin nagiosadmin
+echo "Creating admin user with password: admin123"
+sudo htpasswd -bc /usr/local/nagios/etc/htpasswd.users admin admin123
 
 sudo chown nagios:nagios /usr/local/nagios/etc/htpasswd.users
 sudo chmod 640 /usr/local/nagios/etc/htpasswd.users
@@ -284,9 +284,9 @@ echo "Nagios Installation Complete!"
 echo "=========================================="
 echo ""
 echo "Access nagios at: http://your-host-ip/nagios"
-echo "  Username: nagiosadmin"
-echo "  Password: nagiosadmin"
-echo "Change your password using: sudo htpasswd /usr/local/nagios/etc/htpasswd.users nagiosadmin"
+echo "  Username: admin"
+echo "  Password: admin123"
+echo "Change your password using: sudo htpasswd /usr/local/nagios/etc/htpasswd.users admin"
 echo "Additional Information:"
 echo "  - Swap file: /root/myswapfile (1GB)"
 echo "=========================================="
